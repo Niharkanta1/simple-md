@@ -1,0 +1,32 @@
+appId: com.simplemarkdown.app
+productName: Simple Markdown
+copyright: Copyright © 2026 Simple Markdown
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the compiled app goes into the package. Renderer libraries are bundled
+# by Vite (devDependencies); only main-process runtime deps are copied.
+files:
+  - out/**/*
+  - package.json
+  - '!out/smoke/**'
+  - '!**/*.map'
+
+asar: true
+npmRebuild: false # no native modules
+electronLanguages:
+  - en-US
+
+artifactName: SimpleMarkdown-${version}-${arch}.${ext}
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: portable
+      arch: [x64]
+
+portable:
+  artifactName: SimpleMarkdown-${version}-portable.exe
+  unicode: true
