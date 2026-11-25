@@ -46,6 +46,11 @@
   function onKeydown(e: KeyboardEvent) {
     if (ui.dialog) return;
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && projects.active) {
+      e.preventDefault();
+      A.openSearch();
+      return;
+    }
     if (mod && !e.shiftKey && !e.altKey) {
       switch (e.key.toLowerCase()) {
         case 's':

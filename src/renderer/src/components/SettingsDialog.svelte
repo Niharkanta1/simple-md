@@ -19,6 +19,7 @@
     ['Ctrl+S', 'Save'],
     ['Ctrl+N', 'New file'],
     ['Ctrl+P', 'Quick open file'],
+    ['Ctrl+Shift+F', 'Search documents'],
     ['Ctrl+1 / 2 / 3', 'Editor / Split / Preview'],
     ['Ctrl+B', 'Toggle sidebar'],
     ['Ctrl+F', 'Find in editor'],

@@ -11,6 +11,7 @@ import * as files from '../services/fsOps';
 import * as images from '../services/images';
 import * as gitignore from '../services/gitignore';
 import * as archive from '../services/archive';
+import * as search from '../services/search';
 import { watchProject } from '../services/watcher';
 
 type Handlers = {
@@ -126,6 +127,9 @@ const handlers: Handlers = {
     const abs = await resolveInProject(await root(id), str(p, 'path'));
     shell.showItemInFolder(abs);
   },
+
+  // search
+  searchProject: async (_w, id, q) => search.searchProject(await root(id), str(q, 'query').slice(0, 500)),
 
   // images
   savePastedImage: async (_w, id, md, data, ext) =>

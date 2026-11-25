@@ -6,6 +6,7 @@
   import Icon from './Icon.svelte';
   import ProjectSwitcher from './ProjectSwitcher.svelte';
   import TreeNode from './TreeNode.svelte';
+  import SearchPanel from './SearchPanel.svelte';
 
   let recentOpen = $state(true);
 
@@ -61,7 +62,9 @@
 <aside class="sidebar" style="width:{ui.sidebarWidth}px">
   <ProjectSwitcher />
 
-  {#if projects.active}
+  {#if projects.active && ui.searchOpen}
+    <SearchPanel />
+  {:else if projects.active}
     {#if recent.length}
       <div class="section">
         <button class="section-title" onclick={() => (recentOpen = !recentOpen)}>
@@ -85,6 +88,7 @@
     <div class="section files-head">
       <span class="section-title static">Files</span>
       <div class="tools">
+        <button class="icon-btn" title="Search Documents (Ctrl+Shift+F)" onclick={() => A.openSearch()}><Icon name="search" size={15} /></button>
         <button class="icon-btn" title="New File (Ctrl+N)" onclick={() => A.newFile('')}><Icon name="filePlus" size={15} /></button>
         <button class="icon-btn" title="New Folder" onclick={() => A.newFolder('')}><Icon name="folderPlus" size={15} /></button>
         <button class="icon-btn" title="Refresh" onclick={() => A.refreshTree()}><Icon name="refresh" size={15} /></button>

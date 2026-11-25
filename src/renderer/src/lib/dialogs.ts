@@ -24,6 +24,11 @@ function open(req: DialogRequest): void {
   ui.dialog = req;
 }
 
+/** Resolves once no dialog is open (opening a dialog would otherwise cancel the current one). */
+export async function whenNoDialog(): Promise<void> {
+  while (ui.dialog) await new Promise((r) => setTimeout(r, 200));
+}
+
 export function prompt(opts: {
   title: string;
   message?: string;

@@ -9,6 +9,8 @@ A lightweight desktop Markdown editor, viewer and project manager for Windows, b
 - **Links:** web links open in your browser. Relative `.md` links open in the app. `#anchors` scroll the preview.
 - **.gitignore manager:** add or remove rules, apply common presets, use *Add to .gitignore* from the tree's right-click menu, or edit the file directly. Ignored items appear dimmed in the tree.
 - **Import and export:** export a file (with its images) or a whole project as a ZIP. Import a ZIP as a new project, or import `.md` / `.zip` files into a folder. Imports are checked against zip-slip, absolute paths, symlinks and zip bombs.
+- **Search:** search every Markdown and text file in the project (Ctrl+Shift+F). Each term you enter becomes a search token; documents that contain all tokens are listed by relevance with highlighted snippets. Use "quotes" for phrases. Click a snippet to jump to that line.
+- **External changes:** when the open file is changed by another program, the app asks whether to **Sync from Disk** (the default, also on Esc) or **Overwrite** the file with the content in the app. Autosave pauses while it asks.
 - **Autosave** is on by default, with a 1 s delay. Toggle it from the status bar or Settings. When autosave is off, the app asks *Save / Don't Save / Cancel* before you switch files or close.
 - Light and dark themes (follows Windows by default), resizable and collapsible sidebar, recent files, quick open.
 
@@ -55,6 +57,7 @@ The npm equivalents are `npm run dist:portable`, `npm run dist:zip` and `npm run
 | Ctrl+S | Save |
 | Ctrl+N | New file (in the selected folder) |
 | Ctrl+P | Quick open |
+| Ctrl+Shift+F | Search documents |
 | Ctrl+1 / 2 / 3 | Editor / Split / Preview |
 | Ctrl+B | Toggle sidebar |
 | Ctrl+F | Find in editor |

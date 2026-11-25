@@ -244,7 +244,48 @@ try {
   await sleep(400);
   await win.screenshot({ path: path.join(shots, '3-dark.png') });
 
-  console.log('\n[10] Close flow');
+  console.log('\n[10] Search tokens');
+  await win.keyboard.press('Control+Shift+F');
+  const searchInput = win.locator('.search .box input');
+  check(await waitFor(() => searchInput.evaluate((el) => el === document.activeElement)), 'Ctrl+Shift+F opens search with focus');
+  await searchInput.type('smoke');
+  await win.keyboard.press('Enter');
+  check(await waitFor(() => win.locator('.search .chip', { hasText: 'smoke' }).count().then((n) => n === 1)), 'Enter turns the term into a token chip');
+  check(await waitFor(() => win.locator('.search .result .file', { hasText: 'README.md' }).count().then((n) => n === 1)), 'matching document listed');
+  await searchInput.type('"const answer"');
+  await win.keyboard.press('Enter');
+  check(await waitFor(() => win.locator('.search .chip').count().then((n) => n === 2)), 'quoted phrase becomes one token');
+  check(await waitFor(() => win.locator('.search .result').count().then((n) => n === 1)), 'only documents with all tokens remain');
+  check((await win.locator('.search .snippet mark').count()) > 0, 'snippet highlights tokens');
+  await searchInput.type('zzznomatch');
+  check(await waitFor(() => win.locator('.search .status', { hasText: 'No documents match' }).count().then((n) => n === 1)), 'live search shows no results for unknown term');
+  await win.keyboard.press('Escape'); // clears
+  check(await waitFor(() => win.locator('.search .chip').count().then((n) => n === 0)), 'Esc clears the tokens');
+  await win.keyboard.press('Escape'); // closes
+  check(await waitFor(() => win.locator('.search').count().then((n) => n === 0)), 'Esc again returns to the file tree');
+  await win.screenshot({ path: path.join(shots, '4-files-after-search.png') });
+
+  console.log('\n[11] External change prompt');
+  const conflict = win.locator('.dialog', { hasText: 'File changed on disk' });
+  const before = await fs.readFile(readme, 'utf8');
+  await fs.writeFile(readme, before + '\nExternal sync line.\n');
+  check(await waitFor(() => conflict.count().then((n) => n === 1)), 'external edit asks Sync / Overwrite');
+  await win.screenshot({ path: path.join(shots, '5-external-change.png') });
+  await win.locator('.dialog button', { hasText: 'Sync from Disk' }).click();
+  check(await waitFor(() => win.locator('.cm-content').innerText().then((t) => t.includes('External sync line.'))), 'Sync loads the disk version');
+  const synced = await fs.readFile(readme, 'utf8');
+  await fs.writeFile(readme, 'Replaced by another program.\n');
+  check(await waitFor(() => conflict.count().then((n) => n === 1)), 'second external edit asks again');
+  await win.locator('.dialog button', { hasText: 'Overwrite' }).click();
+  check(await waitFor(async () => (await fs.readFile(readme, 'utf8')) === synced), 'Overwrite writes the app content back');
+  await sleep(800);
+  check((await conflict.count()) === 0, 'own overwrite does not trigger another prompt');
+  await fs.writeFile(readme, synced + 'Escape default line.\n');
+  check(await waitFor(() => conflict.count().then((n) => n === 1)), 'third external edit asks');
+  await win.keyboard.press('Escape');
+  check(await waitFor(() => win.locator('.cm-content').innerText().then((t) => t.includes('Escape default line.'))), 'dismissing defaults to Sync');
+
+  console.log('\n[12] Close flow');
   const cfg = JSON.parse(await fs.readFile(path.join(userData, 'config.json'), 'utf8'));
   check(cfg.theme === 'dark' && cfg.autosave.enabled === true, 'settings persisted to config.json');
 } catch (e) {

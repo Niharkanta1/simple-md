@@ -8,6 +8,7 @@ import type {
   OpenProject,
   ProjectMetaPatch,
   ProjectSummary,
+  SearchResponse,
   SettingsPatch,
   TreeNode
 } from './types';
@@ -46,6 +47,9 @@ export interface ApiMethods {
   deleteEntry(projectId: string, path: string, includeImages: boolean): void;
   entryInfo(projectId: string, path: string): EntryInfo;
   revealInExplorer(projectId: string, path: string): void;
+
+  // search
+  searchProject(projectId: string, query: string): SearchResponse;
 
   // images
   savePastedImage(projectId: string, mdPath: string, bytes: Uint8Array, ext: string): string;
@@ -93,6 +97,7 @@ export const API_METHODS: ApiMethodName[] = [
   'deleteEntry',
   'entryInfo',
   'revealInExplorer',
+  'searchProject',
   'savePastedImage',
   'importDroppedImages',
   'pickAndImportImages',

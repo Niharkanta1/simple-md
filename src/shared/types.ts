@@ -124,3 +124,30 @@ export interface ErrorPayload {
 }
 
 export type Envelope<T> = { ok: true; data: T } | { ok: false; error: ErrorPayload };
+
+export interface SearchSnippet {
+  /** 1-based line number. */
+  line: number;
+  text: string;
+}
+
+export interface SearchHit {
+  /** Project-relative path. */
+  path: string;
+  score: number;
+  /** Total token occurrences in the content. */
+  matches: number;
+  /** Occurrences in the content per (lower-cased) token. */
+  tokenCounts: Record<string, number>;
+  snippets: SearchSnippet[];
+}
+
+export interface SearchResponse {
+  /** The tokens the query was split into. */
+  tokens: string[];
+  results: SearchHit[];
+  /** Number of documents that were searched. */
+  searched: number;
+  /** True if more documents matched than were returned. */
+  truncated: boolean;
+}

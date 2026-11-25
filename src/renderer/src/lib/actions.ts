@@ -1,7 +1,11 @@
+import { tick } from 'svelte';
+import { EditorView } from '@codemirror/view';
 import type { OpenProject, SettingsPatch, TreeNode, ViewMode } from '../../../shared/types';
+import { joinTokens, tokenize } from '../../../shared/search';
+import { editorRef } from './editor/ref';
 import { api, ApiError } from './api';
-import { choose, confirm, prompt, showError, toast } from './dialogs';
-import { doc, projects, settings, tree, ui } from './state.svelte';
+import { choose, confirm, prompt, showError, toast, whenNoDialog } from './dialogs';
+import { doc, projects, search, settings, tree, ui } from './state.svelte';
 import { debounce } from './util/debounce';
 import { basename, dirname, fileKind, isWithin, join, remap } from './util/paths';
 import { nameProblem } from './util/names';
@@ -130,11 +134,11 @@ const autosave = {
 };
 
 function scheduleAutosave(): void {
-  if (!settings.autosave) return;
+  if (!settings.autosave || externalPrompt) return;
   autosave.cancel();
   autosaveTimer = setTimeout(() => {
     autosaveTimer = null;
-    if (settings.autosave) void saveNow();
+    if (settings.autosave && !externalPrompt) void saveNow();
   }, settings.autosaveDelay);
 }
 
@@ -299,6 +303,7 @@ export async function refreshProjects(): Promise<void> {
 async function setActiveProject(p: OpenProject): Promise<void> {
   persistMeta.flush();
   closeDoc();
+  clearSearch();
   projects.active = p;
   tree.root = null;
   tree.selected = null;
@@ -750,10 +755,86 @@ export async function insertImagesFromDialog(): Promise<string[]> {
 
 // =================================================================== external changes
 
+/** Set while the "changed on disk" prompt is open; autosave is paused meanwhile. */
+let externalPrompt: { path: string } | null = null;
+
+/** Writes the editor content to disk even if it is not dirty (used to overwrite external edits). */
+function forceWrite(id: string, path: string): Promise<boolean> {
+  autosave.cancel();
+  saveChain = saveChain.then(async () => {
+    if (doc.path !== path) return false;
+    const version = doc.version;
+    const content = doc.content;
+    doc.saving = true;
+    try {
+      await api.writeFile(id, path, content);
+      if (doc.path === path) {
+        doc.savedContent = content;
+        doc.savedVersion = version;
+        doc.saveError = null;
+      }
+      return true;
+    } catch (e) {
+      doc.saveError = e instanceof Error ? e.message : String(e);
+      showError(e);
+      return false;
+    } finally {
+      doc.saving = false;
+    }
+  });
+  return saveChain;
+}
+
+/**
+ * The open file was changed by another program. Ask whether to sync the
+ * version on disk into the app (the default) or overwrite it with the
+ * content currently in the app.
+ */
+async function resolveExternalEdit(id: string, path: string): Promise<void> {
+  externalPrompt = { path };
+  autosave.cancel();
+  try {
+    // Never replace another dialog that is already open.
+    await whenNoDialog();
+    if (doc.path !== path || activeId() !== id) return;
+    // The file may have changed again (or been reverted) while we waited.
+    const disk = await api.readFile(id, path);
+    if (disk === doc.savedContent) return;
+    const name = basename(path);
+    const unsaved = doc.dirty
+      ? '\n\nYou also have unsaved changes in Simple Markdown. Syncing will discard them.'
+      : '';
+    const choice = await choose({
+      title: 'File changed on disk',
+      message: `"${name}" was modified outside Simple Markdown.\n\nSync to load the version on disk, or overwrite it with the content in Simple Markdown.${unsaved}`,
+      buttons: [
+        { label: 'Overwrite with App Content', value: 'overwrite', variant: 'danger' },
+        { label: 'Sync from Disk', value: 'sync', variant: 'primary' }
+      ]
+    });
+    if (doc.path !== path || activeId() !== id) return;
+    if (choice === 'overwrite') {
+      if (await forceWrite(id, path)) toast(`Overwrote "${name}" with the content in Simple Markdown.`, 'success');
+      return;
+    }
+    // Default (also on Escape / dismiss): sync from disk.
+    const latest = await api.readFile(id, path);
+    if (doc.path !== path) return;
+    loadDoc(path, doc.kind, latest);
+    toast(`Synced "${name}" from disk.`);
+  } catch {
+    /* ignore transient read errors */
+  } finally {
+    externalPrompt = null;
+    if (doc.dirty) scheduleAutosave();
+  }
+}
+
 export async function onExternalChange(): Promise<void> {
   const id = activeId();
   if (!id) return;
   await refreshTree();
+  if (search.tokens.length || search.draft.trim()) void runSearch();
   const path = doc.path;
   if (!path || doc.kind === 'image') return;
   if (!findNode(path)) {
@@ -761,21 +842,111 @@ export async function onExternalChange(): Promise<void> {
     if (!doc.dirty) closeDoc();
     return;
   }
+  // A prompt for this file is already open; it re-reads the disk before acting.
+  if (externalPrompt?.path === path) return;
   try {
+    // Let our own in-flight save finish so it is not mistaken for an external edit.
+    await saveChain;
     const disk = await api.readFile(id, path);
     if (doc.path !== path || disk === doc.savedContent) return;
-    if (!doc.dirty) {
-      loadDoc(path, doc.kind, disk);
-      toast(`"${basename(path)}" was updated on disk and reloaded.`);
-    } else {
-      toast(`"${basename(path)}" changed on disk.`, 'info', {
-        label: 'Reload',
-        run: () => loadDoc(path, doc.kind, disk)
-      });
-    }
+    await resolveExternalEdit(id, path);
   } catch {
     /* ignore transient read errors */
   }
+}
+
+// =================================================================== search
+
+let searchSeq = 0;
+
+function searchQuery(): string {
+  return [joinTokens(search.tokens), search.draft].filter((s) => s.trim()).join(' ');
+}
+
+/** Runs the project search for the current tokens plus the text being typed. */
+export async function runSearch(): Promise<void> {
+  const id = activeId();
+  const q = searchQuery();
+  const seq = ++searchSeq;
+  if (!id || !tokenize(q).length) {
+    search.response = null;
+    search.busy = false;
+    search.error = null;
+    return;
+  }
+  search.busy = true;
+  try {
+    const res = await api.searchProject(id, q);
+    if (seq !== searchSeq) return;
+    search.response = res;
+    search.error = null;
+  } catch (e) {
+    if (seq !== searchSeq) return;
+    search.error = e instanceof Error ? e.message : String(e);
+  } finally {
+    if (seq === searchSeq) search.busy = false;
+  }
+}
+
+export const runSearchSoon = debounce(() => void runSearch(), 250);
+
+/** Turns the typed text into search tokens (chips). */
+export function commitSearchDraft(): void {
+  const add = tokenize(search.draft).filter((t) => !search.tokens.includes(t));
+  search.tokens = [...search.tokens, ...add];
+  search.draft = '';
+  runSearchSoon.cancel();
+  void runSearch();
+}
+
+export function removeSearchToken(token: string): void {
+  search.tokens = search.tokens.filter((t) => t !== token);
+  runSearchSoon.cancel();
+  void runSearch();
+}
+
+export function clearSearch(): void {
+  runSearchSoon.cancel();
+  searchSeq++;
+  search.tokens = [];
+  search.draft = '';
+  search.response = null;
+  search.busy = false;
+  search.error = null;
+}
+
+export function openSearch(): void {
+  if (!projects.active) return;
+  ui.searchOpen = true;
+  if (ui.sidebarCollapsed) {
+    ui.sidebarCollapsed = false;
+    persistSidebar();
+  }
+  search.focusToken++;
+}
+
+/** Opens a file and moves the cursor to the first token match on `line`. */
+export async function openFileAt(path: string, line: number, tokens: string[]): Promise<void> {
+  await openFile(path);
+  if (doc.path !== path) return;
+  await tick();
+  const view = editorRef.view;
+  if (!view) return;
+  const ln = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)));
+  const lower = ln.text.toLowerCase();
+  let from = ln.from;
+  let to = ln.from;
+  let best = Infinity;
+  for (const t of tokens) {
+    const i = lower.indexOf(t);
+    if (i !== -1 && i < best) {
+      best = i;
+      from = ln.from + i;
+      to = from + t.length;
+    }
+  }
+  view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+  if (ui.viewMode !== 'preview') view.focus();
 }
 
 // =================================================================== startup / shutdown
@@ -813,7 +984,7 @@ export async function init(): Promise<void> {
     }
   });
   window.addEventListener('blur', () => {
-    if (settings.autosave && doc.dirty) void saveNow();
+    if (settings.autosave && doc.dirty && !externalPrompt) void saveNow();
   });
   await refreshProjects();
   const activeIdCfg = cfg?.activeProjectId;

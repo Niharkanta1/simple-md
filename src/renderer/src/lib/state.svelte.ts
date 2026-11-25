@@ -1,5 +1,5 @@
 import { SvelteSet } from 'svelte/reactivity';
-import type { AppConfig, OpenProject, ProjectSummary, TreeNode, ViewMode } from '../../../shared/types';
+import type { AppConfig, OpenProject, ProjectSummary, SearchResponse, TreeNode, ViewMode } from '../../../shared/types';
 import type { FileKind } from './util/paths';
 
 // ------------------------------------------------------------------ settings
@@ -118,8 +118,25 @@ class UiState {
   gitignoreOpen = $state(false);
   settingsOpen = $state(false);
   quickOpen = $state(false);
+  /** Sidebar shows the project search panel instead of the file tree. */
+  searchOpen = $state(false);
   shortcutsOpen = $state(false);
   resolvedTheme = $state<'light' | 'dark'>('light');
   ready = $state(false);
 }
 export const ui = new UiState();
+
+// ------------------------------------------------------------------ search
+
+class SearchState {
+  /** Committed search tokens, shown as chips. */
+  tokens = $state<string[]>([]);
+  /** Text currently typed in the search box (not yet a token). */
+  draft = $state('');
+  response = $state<SearchResponse | null>(null);
+  busy = $state(false);
+  error = $state<string | null>(null);
+  /** Bumped to ask the search box to take focus. */
+  focusToken = $state(0);
+}
+export const search = new SearchState();
